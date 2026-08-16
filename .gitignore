@@ -6,3 +6,8 @@ dist/
 !.env.example
 *.log
 .vercel/
+__pycache__/
+*.py[cod]
+.venv/
+db.sqlite3
+.pytest_cache/
