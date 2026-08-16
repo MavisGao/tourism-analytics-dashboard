@@ -1,6 +1,5 @@
 from django.contrib import admin
 
-from .models import MarketMetric
+from .models import TourismMetric
 
-admin.site.register(MarketMetric)
-
+admin.site.register(TourismMetric)

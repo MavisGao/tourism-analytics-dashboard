@@ -5,6 +5,7 @@ dist/
 .env.*
 !.env.example
 *.log
+*.tsbuildinfo
 .vercel/
 __pycache__/
 *.py[cod]

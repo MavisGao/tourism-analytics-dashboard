@@ -1,66 +1,92 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type Market = { name: string; region: string; visitors: number; spend: number; nights: number; change: number };
+type Metric = {
+  id: number;
+  country_code: string;
+  country_name: string;
+  region: string;
+  year: number;
+  arrivals: number | null;
+  receipts_usd: string | null;
+  source: string;
+};
 
-const markets: Market[] = [
-  { name: "United States", region: "North America", visitors: 42180, spend: 38.6, nights: 2.8, change: 12.4 },
-  { name: "Canada", region: "North America", visitors: 24320, spend: 19.2, nights: 3.1, change: 8.7 },
-  { name: "United Kingdom", region: "Europe", visitors: 13940, spend: 14.8, nights: 4.2, change: 5.3 },
-  { name: "Germany", region: "Europe", visitors: 9850, spend: 10.1, nights: 3.8, change: -1.9 },
-];
+type ApiResponse = { count: number; results: Metric[] };
 
-const monthly = [58, 64, 61, 72, 78, 83, 96, 102, 91, 86, 74, 69];
-const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
-function TrendChart() {
-  const width = 760, height = 210, min = 45, max = 110;
-  const xy = monthly.map((value, index) => ({ x: (index / 11) * width, y: height - ((value - min) / (max - min)) * height }));
+function compact(value: number) {
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("en", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function TrendChart({ values, labels }: { values: number[]; labels: string[] }) {
+  const width = 760, height = 210;
+  const max = Math.max(...values, 1);
+  const xy = values.map((value, index) => ({ x: values.length === 1 ? width / 2 : (index / (values.length - 1)) * width, y: height - (value / max) * (height - 12) }));
   const points = xy.map(({ x, y }) => `${x},${y}`).join(" ");
-
-  return <div className="chart-wrap" aria-label="Monthly visitor trend, demo data">
+  return <div className="chart-wrap" aria-label="Annual international tourism arrivals">
     <svg viewBox={`0 0 ${width} ${height + 28}`} role="img">
       {[0, 1, 2, 3].map(line => <line key={line} x1="0" y1={line * 60 + 4} x2={width} y2={line * 60 + 4} className="grid-line" />)}
-      <defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#176b5b" stopOpacity="0.28" /><stop offset="100%" stopColor="#176b5b" stopOpacity="0" /></linearGradient></defs>
-      <polygon points={`0,${height} ${points} ${width},${height}`} fill="url(#area)" />
       <polyline points={points} fill="none" className="trend-line" />
       {xy.map((point, index) => <circle key={labels[index]} cx={point.x} cy={point.y} r="4" className="trend-dot" />)}
-      {labels.map((label, index) => <text key={label} x={(index / 11) * width} y={height + 25} textAnchor="middle" className="axis-label">{label}</text>)}
+      {labels.map((label, index) => <text key={label} x={xy[index].x} y={height + 25} textAnchor="middle" className="axis-label">{label}</text>)}
     </svg>
   </div>;
 }
 
 export default function App() {
-  const [year, setYear] = useState("2026");
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [year, setYear] = useState<number | null>(null);
   const [region, setRegion] = useState("All regions");
   const [query, setQuery] = useState("");
-  const filtered = useMemo(() => markets.filter(market =>
-    (region === "All regions" || market.region === region) && market.name.toLowerCase().includes(query.toLowerCase())), [query, region]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/metrics/?page_size=1000`)
+      .then(response => { if (!response.ok) throw new Error("API request failed"); return response.json() as Promise<ApiResponse>; })
+      .then(data => { setMetrics(data.results); setYear(Math.max(...data.results.map(item => item.year))); setStatus("ready"); })
+      .catch(() => setStatus("error"));
+  }, []);
+
+  const years = useMemo(() => [...new Set(metrics.map(item => item.year))].sort((a, b) => b - a), [metrics]);
+  const regions = useMemo(() => [...new Set(metrics.map(item => item.region))].sort(), [metrics]);
+  const selected = useMemo(() => metrics.filter(item => item.year === year && (region === "All regions" || item.region === region) && item.country_name.toLowerCase().includes(query.toLowerCase())), [metrics, query, region, year]);
+  const trend = useMemo(() => years.slice().reverse().map(trendYear => metrics.filter(item => item.year === trendYear && item.arrivals).reduce((sum, item) => sum + (item.arrivals ?? 0), 0)), [metrics, years]);
+  const totalArrivals = selected.reduce((sum, item) => sum + (item.arrivals ?? 0), 0);
+  const totalReceipts = selected.reduce((sum, item) => sum + Number(item.receipts_usd ?? 0), 0);
 
   return <main className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">T</span><span>Tourism Lens</span></div>
-      <nav aria-label="Primary navigation"><a className="nav-item active" href="#overview">Overview</a><a className="nav-item" href="#markets">Source markets</a><a className="nav-item" href="#trend">Visitor trends</a><a className="nav-item" href="#about">Data notes</a></nav>
-      <div className="data-note" id="about"><strong>Portfolio build</strong><p>All values are labeled demo data while the data pipeline is being developed.</p></div>
+      <nav aria-label="Primary navigation"><a className="nav-item active" href="#overview">Overview</a><a className="nav-item" href="#markets">Countries</a><a className="nav-item" href="#trend">Annual trends</a><a className="nav-item" href="#about">Data notes</a></nav>
+      <div className="data-note" id="about"><strong>Public data</strong><p>World Bank indicators sourced from UN Tourism. Values depend on country reporting and may be incomplete.</p></div>
     </aside>
     <section className="content" id="overview">
-      <header className="topbar"><div><p className="eyebrow">DESTINATION PERFORMANCE</p><h1>Philadelphia tourism overview</h1><p className="subtitle">Explore visitor volume, economic contribution, and source-market performance.</p></div><span className="demo-badge">DEMO DATA</span></header>
-      <div className="filters" aria-label="Dashboard filters">
-        <label>Reporting year<select value={year} onChange={event => setYear(event.target.value)}><option>2026</option><option>2025</option></select></label>
-        <label>Region<select value={region} onChange={event => setRegion(event.target.value)}><option>All regions</option><option>North America</option><option>Europe</option></select></label>
-        <button type="button" onClick={() => { setYear("2026"); setRegion("All regions"); setQuery(""); }}>Reset filters</button>
-      </div>
-      <section className="kpi-grid" aria-label="Key performance indicators">
-        <article className="kpi-card"><p>Total visitors</p><strong>1.24M</strong><span className="positive">+8.2% year over year</span></article>
-        <article className="kpi-card"><p>Visitor spending</p><strong>$892M</strong><span className="positive">+6.4% year over year</span></article>
-        <article className="kpi-card"><p>Average stay</p><strong>3.4 nights</strong><span className="positive">+0.2 nights</span></article>
-        <article className="kpi-card"><p>Hotel occupancy</p><strong>74.6%</strong><span className="neutral">Peak: 86.1% in July</span></article>
-      </section>
-      <section className="panel" id="trend"><div className="panel-heading"><div><p className="eyebrow">SEASONALITY</p><h2>Monthly visitor volume</h2></div><div className="legend"><span />Visitors (thousands)</div></div><TrendChart /></section>
-      <section className="panel" id="markets">
-        <div className="panel-heading table-heading"><div><p className="eyebrow">MARKET MIX</p><h2>Leading source markets</h2></div><label className="search-label"><span>Search markets</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by country" /></label></div>
-        <div className="table-scroll"><table><thead><tr><th>Market</th><th>Visitors</th><th>Spend</th><th>Avg. nights</th><th>YoY change</th></tr></thead><tbody>{filtered.map(market => <tr key={market.name}><td><strong>{market.name}</strong></td><td>{market.visitors.toLocaleString()}</td><td>${market.spend.toFixed(1)}M</td><td>{market.nights}</td><td className={market.change >= 0 ? "positive" : "negative"}>{market.change >= 0 ? "+" : ""}{market.change}%</td></tr>)}</tbody></table>{filtered.length === 0 && <p className="empty-state">No markets match “{query}”.</p>}</div>
-      </section>
-      <footer>Tourism Lens · Portfolio project · Sample data only</footer>
+      <header className="topbar"><div><p className="eyebrow">GLOBAL TOURISM PERFORMANCE</p><h1>International tourism overview</h1><p className="subtitle">Explore reported arrivals and receipts by country, region, and year.</p></div><span className="demo-badge">WORLD BANK DATA</span></header>
+      {status === "loading" && <section className="panel"><p>Loading tourism metrics…</p></section>}
+      {status === "error" && <section className="panel"><h2>API unavailable</h2><p>Start the Django API locally or configure <code>VITE_API_BASE_URL</code> for the deployed backend.</p></section>}
+      {status === "ready" && <>
+        <div className="filters" aria-label="Dashboard filters">
+          <label>Reporting year<select value={year ?? ""} onChange={event => setYear(Number(event.target.value))}>{years.map(item => <option key={item}>{item}</option>)}</select></label>
+          <label>Region<select value={region} onChange={event => setRegion(event.target.value)}><option>All regions</option>{regions.map(item => <option key={item}>{item}</option>)}</select></label>
+          <button type="button" onClick={() => { setYear(years[0]); setRegion("All regions"); setQuery(""); }}>Reset filters</button>
+        </div>
+        <section className="kpi-grid" aria-label="Key performance indicators">
+          <article className="kpi-card"><p>Reported arrivals</p><strong>{compact(totalArrivals)}</strong><span className="neutral">Across selected countries</span></article>
+          <article className="kpi-card"><p>Tourism receipts</p><strong>{money(totalReceipts)}</strong><span className="neutral">Current US dollars</span></article>
+          <article className="kpi-card"><p>Countries represented</p><strong>{selected.length}</strong><span className="neutral">With at least one metric</span></article>
+          <article className="kpi-card"><p>Reporting year</p><strong>{year}</strong><span className="neutral">Latest available varies by country</span></article>
+        </section>
+        <section className="panel" id="trend"><div className="panel-heading"><div><p className="eyebrow">ANNUAL SERIES</p><h2>Reported international arrivals</h2></div><div className="legend"><span />Arrivals</div></div><TrendChart values={trend} labels={years.slice().reverse().map(String)} /></section>
+        <section className="panel" id="markets"><div className="panel-heading table-heading"><div><p className="eyebrow">COUNTRY COMPARISON</p><h2>Tourism performance</h2></div><label className="search-label"><span>Search countries</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by country" /></label></div>
+          <div className="table-scroll"><table><thead><tr><th>Country</th><th>Region</th><th>Arrivals</th><th>Receipts</th></tr></thead><tbody>{selected.map(item => <tr key={item.id}><td><strong>{item.country_name}</strong> <small>{item.country_code}</small></td><td>{item.region}</td><td>{item.arrivals?.toLocaleString() ?? "Not reported"}</td><td>{item.receipts_usd ? money(Number(item.receipts_usd)) : "Not reported"}</td></tr>)}</tbody></table>{selected.length === 0 && <p className="empty-state">No countries match the selected filters.</p>}</div>
+        </section>
+      </>}
+      <footer>Tourism Lens · World Bank / UN Tourism · CC BY 4.0</footer>
     </section>
   </main>;
 }
