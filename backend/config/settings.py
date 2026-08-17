@@ -9,6 +9,9 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "local-development-only")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [host for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host]
 
+if not DEBUG and SECRET_KEY == "local-development-only":
+    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -60,13 +63,21 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "3600"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 CORS_ALLOWED_ORIGINS = [origin for origin in os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,https://tourism-analytics-dashboard-ten.vercel.app",
+    "http://localhost:5173,http://127.0.0.1:5173,https://tourism-analytics-dashboard-ten.vercel.app",
 ).split(",") if origin]
 
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
 }
-
