@@ -8,6 +8,12 @@ The live React dashboard consumes a Django REST API backed by PostgreSQL on Azur
 
 **Live demo:** https://tourism-analytics-dashboard-ten.vercel.app/
 
+## Demo
+
+[![Tourism analytics dashboard with a GraphQL country drill-down](docs/tourism-dashboard-graphql.png)](https://tourism-analytics-dashboard-ten.vercel.app/)
+
+Search for a country and select its name to load annual arrivals and receipts through the GraphQL drill-down.
+
 ## Features
 
 - Responsive KPI overview for reported arrivals, tourism receipts, and country coverage
