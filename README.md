@@ -4,7 +4,7 @@ An interactive portfolio dashboard for exploring international tourism arrivals 
 
 ## Current status
 
-The React frontend now consumes a paginated Django REST API. A reproducible management command imports World Bank tourism indicators into a PostgreSQL-ready data model. Cloud database and backend deployment are the next milestone.
+The live React dashboard consumes a Django REST API backed by PostgreSQL on Azure. Country rows open a GraphQL-powered drill-down with each country's annual arrivals and receipts history.
 
 **Live demo:** https://tourism-analytics-dashboard-ten.vercel.app/
 
@@ -13,12 +13,15 @@ The React frontend now consumes a paginated Django REST API. A reproducible mana
 - Responsive KPI overview for reported arrivals, tourism receipts, and country coverage
 - Interactive region and year controls
 - Searchable source-market table
-- Monthly visitor trend visualization
+- Clickable country details loaded through GraphQL
+- Annual arrivals trend visualization
 - Accessible labels and mobile-friendly layout
 - Django REST API with market, year, region, and text filters
 - PostgreSQL-ready persistence with a local SQLite fallback
 - Reproducible World Bank API ingestion command
-- Backend API tests
+- Docker Compose demo and focused GitHub Actions CI
+- Azure-hosted backend with health and readiness checks
+- Backend API and frontend component tests
 
 ## Tech stack
 
@@ -28,7 +31,10 @@ The React frontend now consumes a paginated Django REST API. A reproducible mana
 - CSS
 - Django
 - Django REST Framework
+- Strawberry GraphQL
 - PostgreSQL (configured through `DATABASE_URL`)
+- Docker and GitHub Actions
+- Azure Container Apps and Vercel
 
 ## Run locally
 
@@ -62,6 +68,7 @@ The API will be available at:
 - `GET /api/health/`
 - `GET /api/metrics/`
 - `GET /api/metrics/?year=2020&region=Europe%20%26%20Central%20Asia&search=Germany`
+- `POST /graphql/` with `country(code: "FRA")` for annual country history
 
 SQLite is used when `DATABASE_URL` is not set. Copy `backend/.env.example` and provide a PostgreSQL connection string when running against PostgreSQL.
 
@@ -78,13 +85,14 @@ python manage.py test
 npm run build
 ```
 
-## Roadmap
+## Architecture
 
-- Deploy PostgreSQL and the Django REST Framework API
-- Connect the React frontend to the deployed API
-- Add frontend component tests
-- Containerize the application with Docker
-- Add continuous integration and public deployment
+- Vercel serves the React/TypeScript frontend.
+- Azure Container Apps runs the Dockerized Django API.
+- Azure Database for PostgreSQL stores the imported tourism metrics.
+- Django REST Framework powers dashboard filtering, summaries, trends, and pagination.
+- GraphQL powers the country-level drill-down.
+- GitHub Actions runs frontend and backend checks and publishes the backend image.
 
 ## Data note
 

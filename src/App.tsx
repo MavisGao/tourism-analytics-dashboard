@@ -20,8 +20,18 @@ type ApiResponse = {
 type Metadata = { years: number[]; regions: string[] };
 type Summary = { arrivals: number; receipts_usd: number | string; countries: number };
 type TrendPoint = { year: number; arrivals: number };
+type CountryYearMetric = { year: number; arrivals: number | null; receiptsUsd: string | null };
+type CountryDetail = {
+  code: string;
+  name: string;
+  region: string;
+  source: string;
+  metrics: CountryYearMetric[];
+};
+type CountryDetailResponse = { data?: { country: CountryDetail | null }; errors?: { message: string }[] };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+const GRAPHQL_URL = `${API_BASE_URL.replace(/\/api\/?$/, "")}/graphql/`;
 const PAGE_SIZE = 25;
 
 function compact(value: number) {
@@ -36,6 +46,32 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { signal });
   if (!response.ok) throw new Error(`API request failed with ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+async function getCountryDetail(code: string, signal?: AbortSignal): Promise<CountryDetail> {
+  const response = await fetch(GRAPHQL_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: `
+        query CountryDetail($code: String!) {
+          country(code: $code) {
+            code
+            name
+            region
+            source
+            metrics { year arrivals receiptsUsd }
+          }
+        }
+      `,
+      variables: { code },
+    }),
+    signal,
+  });
+  if (!response.ok) throw new Error(`GraphQL request failed with ${response.status}`);
+  const result = await response.json() as CountryDetailResponse;
+  if (result.errors?.length || !result.data?.country) throw new Error(result.errors?.[0]?.message ?? "Country not found");
+  return result.data.country;
 }
 
 function TrendChart({ values, labels }: { values: number[]; labels: string[] }) {
@@ -53,6 +89,36 @@ function TrendChart({ values, labels }: { values: number[]; labels: string[] }) 
   </div>;
 }
 
+function CountryDetailPanel({ detail, code, status, onClose }: {
+  detail: CountryDetail | null;
+  code: string;
+  status: "loading" | "ready" | "error";
+  onClose: () => void;
+}) {
+  const values = detail?.metrics.map(item => item.arrivals ?? 0) ?? [];
+  const labels = detail?.metrics.map(item => String(item.year)) ?? [];
+
+  return <section className="country-detail" aria-live="polite">
+    <div className="country-detail-heading">
+      <div><p className="eyebrow">GRAPHQL DRILL-DOWN</p><h3>{detail?.name ?? code}</h3>{detail && <p>{detail.code} · {detail.region}</p>}</div>
+      <button type="button" onClick={onClose} aria-label="Close country details">Close</button>
+    </div>
+    {status === "loading" && <p className="detail-message" role="status">Loading country history through GraphQL…</p>}
+    {status === "error" && <p className="detail-message error-text">Country details could not be loaded.</p>}
+    {status === "ready" && detail && <>
+      <div className="detail-meta"><span>Loaded through GraphQL</span><span>{detail.source}</span><span>{detail.metrics.length} reporting years</span></div>
+      <TrendChart values={values} labels={labels} />
+      <div className="detail-years" aria-label={`${detail.name} annual tourism metrics`}>
+        {detail.metrics.map(item => <article key={item.year}>
+          <strong>{item.year}</strong>
+          <span>{item.arrivals === null ? "Arrivals not reported" : `${item.arrivals.toLocaleString()} arrivals`}</span>
+          <span>{item.receiptsUsd === null ? "Receipts not reported" : `${money(Number(item.receiptsUsd))} receipts`}</span>
+        </article>)}
+      </div>
+    </>}
+  </section>;
+}
+
 export default function App() {
   const [metadata, setMetadata] = useState<Metadata>({ years: [], regions: [] });
   const [metrics, setMetrics] = useState<ApiResponse>({ count: 0, next: null, previous: null, results: [] });
@@ -63,6 +129,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
+  const [countryDetail, setCountryDetail] = useState<CountryDetail | null>(null);
+  const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     getJson<Metadata>("/metadata/")
@@ -117,6 +186,26 @@ export default function App() {
     };
   }, [page, query, region, year]);
 
+  useEffect(() => {
+    if (!selectedCountryCode) {
+      setCountryDetail(null);
+      return;
+    }
+    const controller = new AbortController();
+    setDetailStatus("loading");
+    getCountryDetail(selectedCountryCode, controller.signal)
+      .then(data => {
+        setCountryDetail(data);
+        setDetailStatus("ready");
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setCountryDetail(null);
+        setDetailStatus("error");
+      });
+    return () => controller.abort();
+  }, [selectedCountryCode]);
+
   const trendValues = useMemo(() => trend.map(item => item.arrivals), [trend]);
   const trendLabels = useMemo(() => trend.map(item => String(item.year)), [trend]);
   const pageCount = Math.max(1, Math.ceil(metrics.count / PAGE_SIZE));
@@ -146,7 +235,8 @@ export default function App() {
         </section>
         <section className="panel" id="trend"><div className="panel-heading"><div><p className="eyebrow">ANNUAL SERIES</p><h2>Reported international arrivals</h2></div><div className="legend"><span />Arrivals</div></div><TrendChart values={trendValues} labels={trendLabels} /></section>
         <section className="panel" id="markets"><div className="panel-heading table-heading"><div><p className="eyebrow">COUNTRY COMPARISON</p><h2>Tourism performance</h2></div><label className="search-label"><span>Search countries</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search by country or code" /></label></div>
-          <div className="table-scroll"><table><thead><tr><th>Country</th><th>Region</th><th>Arrivals</th><th>Receipts</th></tr></thead><tbody>{metrics.results.map(item => <tr key={item.id}><td><strong>{item.country_name}</strong> <small>{item.country_code}</small></td><td>{item.region}</td><td>{item.arrivals?.toLocaleString() ?? "Not reported"}</td><td>{item.receipts_usd ? money(Number(item.receipts_usd)) : "Not reported"}</td></tr>)}</tbody></table>{metrics.results.length === 0 && <p className="empty-state">No countries match the selected filters.</p>}</div>
+          {selectedCountryCode && <CountryDetailPanel detail={countryDetail} code={selectedCountryCode} status={detailStatus} onClose={() => setSelectedCountryCode(null)} />}
+          <div className="table-scroll"><table><thead><tr><th>Country</th><th>Region</th><th>Arrivals</th><th>Receipts</th></tr></thead><tbody>{metrics.results.map(item => <tr key={item.id}><td><button type="button" className="country-link" aria-label={`View details for ${item.country_name}`} onClick={() => setSelectedCountryCode(item.country_code)}>{item.country_name}</button> <small>{item.country_code}</small></td><td>{item.region}</td><td>{item.arrivals?.toLocaleString() ?? "Not reported"}</td><td>{item.receipts_usd ? money(Number(item.receipts_usd)) : "Not reported"}</td></tr>)}</tbody></table>{metrics.results.length === 0 && <p className="empty-state">No countries match the selected filters.</p>}</div>
           <div className="pagination" aria-label="Country results pagination">
             <button type="button" disabled={!metrics.previous || status === "loading"} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</button>
             <span>Page {page} of {pageCount} · {metrics.count} countries</span>
