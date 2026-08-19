@@ -25,7 +25,7 @@ Search for a country and select its name to load annual arrivals and receipts th
 - Django REST API with market, year, region, and text filters
 - PostgreSQL-ready persistence with a local SQLite fallback
 - Reproducible World Bank API ingestion command
-- Docker Compose demo and focused GitHub Actions CI
+- Docker Compose demo and GitHub Actions CI/CD
 - Azure-hosted backend with health and readiness checks
 - Backend API and frontend component tests
 
@@ -98,7 +98,7 @@ npm run build
 - Azure Database for PostgreSQL stores the imported tourism metrics.
 - Django REST Framework powers dashboard filtering, summaries, trends, and pagination.
 - GraphQL powers the country-level drill-down.
-- GitHub Actions runs frontend and backend checks and publishes the backend image.
+- GitHub Actions tests both applications, publishes the backend image to GHCR, and deploys it to Azure Container Apps after changes reach `main`.
 
 ## Data note
 
