@@ -1,13 +1,10 @@
 from rest_framework import serializers
 
-from .models import MarketMetric
+from .models import TourismMetric
 
 
-class MarketMetricSerializer(serializers.ModelSerializer):
+class TourismMetricSerializer(serializers.ModelSerializer):
     class Meta:
-        model = MarketMetric
-        fields = [
-            "id", "name", "region", "year", "visitors", "spend_millions",
-            "average_nights", "yoy_change",
-        ]
+        model = TourismMetric
+        fields = ["id", "country_code", "country_name", "region", "year", "arrivals", "receipts_usd", "source", "imported_at"]
 

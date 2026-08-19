@@ -1,10 +1,12 @@
 node_modules/
+.npm-cache/
 dist/
 .DS_Store
 .env
 .env.*
 !.env.example
 *.log
+*.tsbuildinfo
 .vercel/
 __pycache__/
 *.py[cod]
