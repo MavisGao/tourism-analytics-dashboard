@@ -1,5 +1,7 @@
-from django.test import TestCase
+import json
+
 from django.db import DatabaseError, connection
+from django.test import TestCase
 from unittest.mock import patch
 from rest_framework.test import APIClient
 
@@ -93,3 +95,65 @@ class TourismMetricApiTests(TestCase):
         with patch.object(connection, "cursor", side_effect=DatabaseError):
             response = self.client.get("/api/ready/")
         self.assertEqual(response.status_code, 503)
+
+
+class CountryGraphQLTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        TourismMetric.objects.create(
+            country_code="CAN",
+            country_name="Canada",
+            region="North America",
+            year=2019,
+            arrivals=22_000_000,
+            receipts_usd="33000000000",
+        )
+        TourismMetric.objects.create(
+            country_code="CAN",
+            country_name="Canada",
+            region="North America",
+            year=2020,
+            arrivals=3_000_000,
+            receipts_usd="15000000000",
+        )
+
+    def graphql(self, code):
+        return self.client.post(
+            "/graphql/",
+            data=json.dumps(
+                {
+                    "query": """
+                        query CountryDetail($code: String!) {
+                          country(code: $code) {
+                            code
+                            name
+                            region
+                            source
+                            metrics { year arrivals receiptsUsd }
+                          }
+                        }
+                    """,
+                    "variables": {"code": code},
+                }
+            ),
+            content_type="application/json",
+        )
+
+    def test_country_query_returns_ordered_history(self):
+        response = self.graphql("can")
+
+        self.assertEqual(response.status_code, 200)
+        country = response.json()["data"]["country"]
+        self.assertEqual(country["name"], "Canada")
+        self.assertEqual(country["region"], "North America")
+        self.assertEqual(
+            [row["year"] for row in country["metrics"]], [2019, 2020]
+        )
+        self.assertEqual(country["metrics"][1]["arrivals"], 3_000_000)
+        self.assertEqual(country["metrics"][1]["receiptsUsd"], "15000000000.00")
+
+    def test_country_query_returns_null_for_unknown_code(self):
+        response = self.graphql("ZZZ")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["data"]["country"])
